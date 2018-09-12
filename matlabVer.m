@@ -1,12 +1,13 @@
 %% histogram equalization
 clear
-I=imread('099.png'); % ？？3 channels?
-% I1=I(:,:,1);I2=I(:,:,2);I3=I(:,:,3);subplot(1,3,1);imshow(I1);subplot(1,3,2);imshow(I2);subplot(1,3,3);imshow(I3);
-I = I(:,:,1);
-I_new = mat2gray(I,[0 255]) % normalize image into [0,1]
+I=imread('126.png'); % PNG has 3 channels
+K = rgb2gray(I); % Converts RGB channels into greysclae
+
+I_new = mat2gray(K,[0 255]) % Normalize image into [0,1]
+% J = adapthisteq(I_new,'ClipLimit',0.25)
 J=histeq(I_new);
 
-figure;
+figure; 
 subplot(2,2,1),imshow(I_new);title('original image');
 subplot(2,2,2),imshow(J);title('histogram equalized image');
 subplot(2,2,3),imhist(I_new,64);title('origial histo');
@@ -21,7 +22,7 @@ subplot(1,2,2),imshow(DownSampled);title('downsampled image');
 %% band-pass filter: apply a band-pass filter on image (attenuate bony confounder effects)
 
 % Gaussian kenrnel convoluted with the image: the high-pass spatial size threshold
-sigma_high = 10;% σis the radius r，the larger the radius the larger the more unclear the image
+sigma_high = 10;% sigma is the radius r, the larger the radius the larger the more unclear the image
 img_undist=imgaussfilt(DownSampled,sigma_high); %  Gaussian blur:img_undist=G_h(L)
 
 % High pass component of the filter
@@ -30,7 +31,7 @@ deter = det(numerator); % |L-G_h(L)|
 denumerator = imgaussfilt(deter,sigma_high);
 highPass = 1/2+(1/4)*(numerator/denumerator);
 
-sigma_low=5;
+sigma_low=0.3;
 bandPass = imgaussfilt(highPass,sigma_low);
 
 subplot(121);imshow(highPass);title("High pass component");
@@ -38,38 +39,81 @@ subplot(122);imshow(bandPass);title("Band pass component");
 
 %% texture analysis
 %% 1. Directionality: image gradients along x and y directions
-[Gx2, Gy2] = imgradientxy(img_undist,'sobel'); % Gx2 = ▽H; Gy2 = ▽V
-subplot(121);imshow(Gx2);subplot(122);imshow(Gy2);
-vector_magnitude = (det(Gx2)+det(Gy2))/2; % vector_magnitude =|▽G|
-vector_angle = arctan(Gx2*pinv(Gy2))+pi/2; % B/A = B*inv(A)
-% directionality
+[Gx2, Gy2] = imgradientxy(DownSampled,'sobel'); % Gx2 = gard(H); Gy2 = grad(V)
+subplot(121);imshow(Gx2);title('horizental gradient');subplot(122);imshow(Gy2);title('vertical gradient');
+vector_magnitude = (abs(Gx2)+abs(Gy2))/2; % vector_magnitude =|grad(G)|
+
+% There are some NaN in vector_angle since the division
+vector_angle = atan(Gy2./Gx2)+pi/2; % Element-wise division; notice that Angle is in radian
+vector_angle_degree = rad2deg(vector_angle); 
+
 
 %% 2. LBP
-lbpSmaple = extractLBPFeatures(img_undist);
-numTrain = 512;
-featuresMat = zeros(numTrain,length(lbpSmaple));
-for i = 1:numTrain
-    featuresMat(i,:) = extractLBPFeatures(img_undist, 'Upright',false);
-end
-figure, imshow(featuresMat);title('LBP texture');
-%% 3. GLCM
-P=img_undist
-P_u = unique(P);        % get all grey levels
-n = length(P_u);        % number of grey levels
-G = zeros(n, n);        % initialize
-% four loop, outside two loops for assigning to each location in GLCM
-% inner 2 loops go through each pixel and accumulate the # of apperance
-for p = 1:n,
-    for q = 1:n,
+[m n]=size(DownSampled);
+LBPimg=zeros(m,n);
 
-        cnt = 0;           
-        for i = 1:r,
-            for j = 1:c,
-                if  (j+1) <= c && ((P(i, j) == p && P(i, j+1) == q) || P(i, j) == q && P(i, j+1) == p),
-                    cnt = cnt + 1;
-                end
+
+for i=1:m
+    for j=1:n        
+        b0=0;  b1=0;  b2=0;  b3=0;  b4=0;  b5=0;  b6=0;  b7=0;
+
+        if(i-1>0 && j-1>0 && i+1<=m && j+1<=n) % This ensure to ignore the pixels on the edge
+            if(DownSampled(i-1,j-1)>DownSampled(i,j))
+                b0=1;
             end
+
+            if(DownSampled(i-1,j)>DownSampled(i,j))
+                b1=1;
+            end            
+
+            if(DownSampled(i-1,j+1)>DownSampled(i,j))
+                b2=1;
+            end           
+
+            if(DownSampled(i,j+1)>DownSampled(i,j))
+                b3=1;
+            end            
+
+            if(DownSampled(i+1,j+1)>DownSampled(i,j))
+                b4=1;
+            end            
+
+            if(DownSampled(i+1,j)>DownSampled(i,j))
+                b5=1;
+            end 
+
+            if(DownSampled(i+1,j-1)>DownSampled(i,j))
+                b6=1;
+            end      
+
+            if(DownSampled(i,j-1)>DownSampled(i,j))
+                b7=1;
+            end        
+
+            if(DownSampled(i+1,j-1)>DownSampled(i,j))
+                b5=1;
+            end              
+        b=b0+b1*2^1+b2*2^2+b3*2^3+b4*2^4+b5*2^5+b6*2^6+b7*2^7;
+        LBPimg(i,j)=b;
         end
-        G(p, q) = cnt;
+        
     end
 end
+
+figure
+subplot(1,2,1),imshow(DownSampled);
+title('downsampled image');
+subplot(1,2,2),imshow(LBPimg);
+title('LBP image');
+
+%% 3. GLCM 
+glcm = graycomatrix(DownSampled,'NumLevels',256);
+imshow(glcm);
+
+%% 4. Gabor filter
+[mag0, phase0] = imgaborfilt(DownSampled,5,0);
+[mag1, phase1] = imgaborfilt(DownSampled,5,45);
+[mag2, phase2] = imgaborfilt(DownSampled,5,90);
+[mag3, phase3] = imgaborfilt(DownSampled,5,135);
+[mag4, phase4] = imgaborfilt(DownSampled,5,180);
+
