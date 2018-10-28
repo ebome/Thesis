@@ -1,20 +1,26 @@
-from skimage import io,exposure
+import skimage
+import numpy as np
 import matplotlib.pyplot as plt
+from PIL import Image
 
-img = io.imread("099.png", 0) 
-plt.figure("hist",figsize=(8,8))
+import os
+import glob
 
-arr=img.flatten()
-plt.subplot(221)
-plt.imshow(img,plt.cm.gray)  #Original image
-plt.subplot(222)
-plt.hist(arr, bins=256, normed=1,edgecolor='None',facecolor='red') # Original histogram 
 
-img1=exposure.equalize_hist(img)
-arr1=img1.flatten()
-plt.subplot(223)
-plt.imshow(img1,plt.cm.gray)  #Equalized image
-plt.subplot(224)
-plt.hist(arr1, bins=256, density=1,edgecolor='None',facecolor='red') # Equakized histogram
+# Read images from folder
+img_dir = 'D:\AMME4111\#Code\#Partitioned'# The Directory of all images 
+data_path = os.path.join(img_dir,'*g')
+files = glob.glob(data_path)
+CFdata = []
+for f1 in files:
+    img = cv2.imread(f1)
+    CFdata.append(img) 
+    # CFdata is a list with size=139 and each element a np-array(3 channel image,uint8)
 
-plt.show()
+# print image.shape
+for i in range(len(CFdata)):
+    CFdata[i] = cv2.cvtColor(CFdata[i], cv2.COLOR_BGR2GRAY)
+##################################################
+flags=[i for i in dir(cv2) if i.startswith('COLOR_')] 
+print (flags)
+##################################################
