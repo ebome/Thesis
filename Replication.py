@@ -24,3 +24,20 @@ for i in range(len(CFdata)):
 flags=[i for i in dir(cv2) if i.startswith('COLOR_')] 
 print (flags)
 ##################################################
+testImage=CFdata[10]
+norm_image = cv2.normalize(testImage, None, alpha=0, beta=1, norm_type=cv2.NORM_MINMAX, dtype=cv2.CV_32F)
+
+# apply band-pass spatial filter
+'''
+通过一维高斯核生成二维高斯核:先获取两个一维高斯核，
+而后对后一个高斯核进行转置，而后第一个高斯核核第二个高斯核通过矩阵相乘就可以得到一个二维高斯核了
+https://blog.csdn.net/qq_16013649/article/details/78784791
+
+'''
+def gaussian_kernel_2d_opencv(kernel_size = 0,sigma = 0.5): 
+    # kernel_size is aperture size. It should be odd (1 3 5...) and positive.
+    # Gaussian kernel size can be zero's and then they are computed from sigma
+    # returen Gaussian filter coefficients
+    kx = cv2.getGaussianKernel(kernel_size,sigma)
+    ky = cv2.getGaussianKernel(kernel_size,sigma)
+    return np.multiply(kx,np.transpose(ky)) 
