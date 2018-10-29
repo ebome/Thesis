@@ -1,3 +1,9 @@
+import cv2
+
+from skimage.transform import rotate
+from skimage.feature import local_binary_pattern
+from skimage import data, io
+from skimage.color import label2rgb
 import skimage
 import numpy as np
 import matplotlib.pyplot as plt
@@ -6,7 +12,7 @@ from PIL import Image
 import os
 import glob
 
-
+#################################################################################
 # Read images from folder
 img_dir = 'D:\AMME4111\#Code\#Partitioned'# The Directory of all images 
 data_path = os.path.join(img_dir,'*g')
@@ -17,27 +23,103 @@ for f1 in files:
     CFdata.append(img) 
     # CFdata is a list with size=139 and each element a np-array(3 channel image,uint8)
 
-# print image.shape
+# Print image.shape
 for i in range(len(CFdata)):
-    CFdata[i] = cv2.cvtColor(CFdata[i], cv2.COLOR_BGR2GRAY)
-##################################################
+    CFdata[i] = cv2.cvtColor(CFdata[i], cv2.COLOR_BGR2GRAY) 
+    # in cv2, image is read as BGR rather than RGB
+'''
+# Check all flags in cv2
+
 flags=[i for i in dir(cv2) if i.startswith('COLOR_')] 
 print (flags)
-##################################################
-testImage=CFdata[10]
+'''
+
+testImage=CFdata[32]
 norm_image = cv2.normalize(testImage, None, alpha=0, beta=1, norm_type=cv2.NORM_MINMAX, dtype=cv2.CV_32F)
 
-# apply band-pass spatial filter
+#################################################################################
+# Apply band-pass spatial filter
+''' 2D Gaussian kernel is used
 '''
-通过一维高斯核生成二维高斯核:先获取两个一维高斯核，
-而后对后一个高斯核进行转置，而后第一个高斯核核第二个高斯核通过矩阵相乘就可以得到一个二维高斯核了
-https://blog.csdn.net/qq_16013649/article/details/78784791
+high_kernel_size = (11, 11); # ksize MUST be odd numbers
+low_kernel_size = (5,5);
+sigma = 0; # if both sigmas are zeros, they are computed from ksize.width and ksize.height
+blur_HIGH = cv2.GaussianBlur(norm_image,high_kernel_size,sigma) 
+
+var_0 = norm_image - blur_HIGH #  L-G_h(L)
+var_1 = abs(norm_image - blur_HIGH)  #  |L-G_h(L)|
+blur_HIGH_denominater = cv2.GaussianBlur(var_1,high_kernel_size,sigma) 
+# blur_HIGH,blur_LOW,var_0,var_1, blur_HIGH_denominater are all np array with float type
+
+# Prevent 0/0 when do bit-wise division
+var_3 = np.divide( var_0, blur_HIGH_denominater, out=np.zeros_like(var_0), where=blur_HIGH_denominater!=0 )
+
+HIGH_PASS_filter = 0.25*var_3+1 # element-wise summation and multiplication
+
+BAND_PASS_filter = cv2.GaussianBlur(HIGH_PASS_filter,low_kernel_size,sigma)
 
 '''
-def gaussian_kernel_2d_opencv(kernel_size = 0,sigma = 0.5): 
-    # kernel_size is aperture size. It should be odd (1 3 5...) and positive.
-    # Gaussian kernel size can be zero's and then they are computed from sigma
-    # returen Gaussian filter coefficients
-    kx = cv2.getGaussianKernel(kernel_size,sigma)
-    ky = cv2.getGaussianKernel(kernel_size,sigma)
-    return np.multiply(kx,np.transpose(ky)) 
+Ensure no negative values after filtering
+
+# mini=BAND_PASS_filter[BAND_PASS_filter != 0].min()
+# print(mini)
+'''
+
+anti_norm_image = cv2.normalize(BAND_PASS_filter, None, alpha=0, beta=1, norm_type=cv2.NORM_MINMAX) # normalize L into region [0,1] again
+
+'''
+plt.subplot(121)
+plt.imshow(BAND_PASS_filter)
+plt.title('BAND_PASS_filter')
+plt.subplot(122)
+plt.imshow(anti_norm_image)
+plt.title('anti_norm_image')    '''
+
+#################################################################################
+# Festure Extraction
+#################################################################################
+# Tamura feature vectors
+
+
+
+
+
+
+
+#################################################################################
+# LBP feature vectors
+
+''' settings for LBP '''
+radius = 3
+n_points = 8 * radius
+
+#显示到plt中，需要从BGR转化到RGB，若是cv2.imshow(win_name, image)，则不需要转化
+image1 = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+plt.subplot(131)
+plt.imshow(image1)
+
+# 转换为灰度图显示
+image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+plt.subplot(132)
+plt.imshow(image, cmap='gray')
+
+# 处理
+lbp = local_binary_pattern(image, n_points, radius)
+
+plt.subplot(133)
+plt.imshow(lbp, cmap='gray')
+plt.show()
+
+
+
+#################################################################################
+# GLCM feature vectors
+
+
+
+
+
+
+#################################################################################
+# Gabor feature vectors
+
