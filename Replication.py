@@ -69,19 +69,21 @@ anti_norm_image = cv2.normalize(BAND_PASS_filter, None, alpha=0, beta=1, norm_ty
 
 '''
 plt.subplot(121)
-plt.imshow(BAND_PASS_filter)
+plt.imshow(BAND_PASS_filter,cmap='gray')
 plt.title('BAND_PASS_filter')
 plt.subplot(122)
-plt.imshow(anti_norm_image)
-plt.title('anti_norm_image')    '''
+plt.imshow(anti_norm_image,cmap='gray')
+plt.title('anti_norm_image') 
+'''
+
 
 #################################################################################
-# Festure Extraction
+# FEATURE EXTRACTION SECTION
 #################################################################################
 # Tamura feature vectors
 
 
-
+anti_norm_image
 
 
 
@@ -93,20 +95,10 @@ plt.title('anti_norm_image')    '''
 radius = 3
 n_points = 8 * radius
 
-#显示到plt中，需要从BGR转化到RGB，若是cv2.imshow(win_name, image)，则不需要转化
-image1 = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-plt.subplot(131)
-plt.imshow(image1)
+# 仅通过cvtcolor()函数是没有办法将灰色图直接转化为RGB图像的 (https://blog.csdn.net/llh_1178/article/details/77833447?utm_source=blogxgwz7)
 
-# 转换为灰度图显示
-image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-plt.subplot(132)
-plt.imshow(image, cmap='gray')
+lbp = local_binary_pattern(anti_norm_image, n_points, radius)
 
-# 处理
-lbp = local_binary_pattern(image, n_points, radius)
-
-plt.subplot(133)
 plt.imshow(lbp, cmap='gray')
 plt.show()
 
