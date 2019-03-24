@@ -2,17 +2,20 @@ import cv2
 import math
 from scipy import signal
 from skimage.feature import local_binary_pattern
+from PIL import Image
 import skimage
 import numpy as np
 import matplotlib.pyplot as plt
-from PIL import Image
 
 import os
 import glob
 
+'''img = cv2.imread("F:\images\Lena.jpg", 1)
+cv2.imshow("1", img)
+cv2.waitKey()'''
 #################################################################################
 # Read images from folder
-img_dir = 'D:\AMME4111\#Code\#Partitioned'# The Directory of all images 
+img_dir = r'C:\Users\Yang\Desktop\AMME4111\#Code\#Partitioned'# The Directory of all images 
 data_path = os.path.join(img_dir,'*g')
 files = glob.glob(data_path)
 CFdata = []
@@ -21,19 +24,20 @@ for f1 in files:
     CFdata.append(img) 
     # CFdata is a list with size=139 and each element a np-array(3 channel image,uint8)
 
-# Print image.shape
+
 for i in range(len(CFdata)):
     CFdata[i] = cv2.cvtColor(CFdata[i], cv2.COLOR_BGR2GRAY) 
     # in cv2, image is read as BGR rather than RGB
+
 '''
 # Check all flags in cv2
-
 flags=[i for i in dir(cv2) if i.startswith('COLOR_')] 
 print (flags)
 '''
 
-testImage=CFdata[32]
+testImage=CFdata[1]
 norm_image = skimage.img_as_float64(testImage)
+plt.imshow(norm_image);plt.title('normed image')
 # Convert an image to double-precision (64-bit) floating point format, with values in [0, 1]
 
 #################################################################################
@@ -67,19 +71,15 @@ print(mini)
 anti_norm_image = skimage.img_as_ubyte(BAND_PASS_filter)
 # Convert an image to unsigned byte format, with values in [0, 255]
 
-'''
-plt.subplot(121)
-plt.imshow(BAND_PASS_filter,cmap='gray')
-plt.title('BAND_PASS_filter')
-plt.subplot(122)
+
 plt.imshow(anti_norm_image,cmap='gray')
-plt.title('anti_norm_image') 
-'''
+
 
 #################################################################################
 # FEATURE EXTRACTION SECTION
 #################################################################################
 # Tamura feature vectors: coarseness, directionality, contrast
+# -----------------------------------------------------------------------------
 def Tamura(imag):
     #feature=[0,0,0,0,0]   
     Fcrs = coarseness(imag,kmax=4)
@@ -88,31 +88,34 @@ def Tamura(imag):
     feature = [ Fcrs, Fcon, f[0] ]
     return feature
 
-
+# -----------------------------------------------------------------------------
 # FIRST: Coarseness
 # returns a float
-def coarseness(graypic,kmax=4): # graphic为待处理的灰度图像，2^kmax为最大窗口  
-    height,width = graypic.shape   # 获取图片大小  
-    A=np.zeros(shape=(height,width,2**kmax)) # 平均灰度值矩阵A: 3D matrix 
-    #计算有效可计算范围内每个点的2^k邻域内的平均灰度值  
+def coarseness(graypic,kmax=4): # graphicis the input imahe. 2^kmax is the maximal window  
+    height,width = graypic.shape   # get the size of image 
+    A=np.zeros(shape=(height,width,2**kmax)) # A is the average grey level matrix in 3D
+    
+    # Calculte the average grey-level within 2^k neighborhood range for each pixel.  
     for i in range( (2**(kmax-1)+1), (height-2**(kmax-1)+1) ): # stop is not included in py
         for j in range( (2**(kmax-1)+1), (width-2**(kmax-1)+1) ):
             for k in range(1,kmax):
                 a = anti_norm_image[ (i-2**(k-1)):(i+2**(k-1)) , (j-2**(k-1)):(j+2**(k-1)) ]
                 A[i,j,k] = np.mean(a) # the mean of all the element in matrix
         
-    # 对每个像素点计算在水平和垂直方向上不重叠窗口之间的Ak差  
+    # Calclute the differnece between the vertical and horizontal window's Ak for each pixel  
     Eh=np.zeros(shape=(height,width,2**kmax)) 
     Ev=np.zeros(shape=(height,width,2**kmax)) 
     for i in range( (2**(kmax-1)), (height-2**(kmax-1)) ): # stop is not included in py
         for j in range( (2**(kmax-1)), (width-2**(kmax-1)) ):
             for k in range(0,kmax):
-                a = abs(  A[(i+2**(k-1)),j,k] - A[(i-2**(k-1)),j]   ) # a is a vertical list
-                b = abs(  A[i,(j+2**(k-1)),k] - A[i,(j-2**(k-1))]   ) # b is a vertical list
+                # i+2**(k-1) 'and' j+2**(k-1) are not integers, so I need to cast them
+                a_1 = int( i+2**(k-1));a_2 = int( i-2**(k-1));a_3 = int( j+2**(k-1));a_4 = int( j-2**(k-1));
+                a = np.absolute(  A[a_1,j,k] - A[a_2,j]   ) # a is a vertical list
+                b = np.absolute(  A[i,a_3,k] - A[i,a_4]   ) # b is a vertical list
                 Eh[i,j]=a 
                 Ev[i,j]=b  
 
-    # 对每个像素点计算使E达到最大值的k  
+    # Maximized k by calculating E  
     Sbest=np.zeros(shape=(height,width))
     maxkk=0
     for i in range( (2**(kmax-1)), (height-2**(kmax-1)) ): # stop is not included in py
@@ -123,33 +126,32 @@ def coarseness(graypic,kmax=4): # graphic为待处理的灰度图像，2^kmax为
                 maxkk = maxEh  
             else:  
                 maxkk = maxEv  
-            Sbest[i,j]=2**maxkk # 每个像素点的最优窗口大小为2^maxkk  
+            Sbest[i,j]=2**maxkk # The best window size for each pixel is 2^maxkk  
 
-    # 所有Sbest的均值作为整幅图片的粗糙度  
+    # The coarseness for the whole image is the average of all value in Sbest
     Fcrs = np.mean(Sbest)  
     return Fcrs # It is a number
 
 f=coarseness(anti_norm_image)
 
-
+# -----------------------------------------------------------------------------
 # SECOND: Contrast
-# 注意这个函数因为涉及到方差，要求输入类型为double，因此我这里在源代码上做了适当的修改  
-def contrast(graypic): # graypic为待处理的灰度图片  
-    graypic = graypic.astype(float)  
+def contrast(graypic):  
+    graypic = graypic.astype(float)  # convert data type from uint8 to float
     x = graypic.reshape(-1)     # Convert 2D arrray in 1D  
     a=(x-np.mean(x))
-    M4 = np.mean( np.power(a, 4) )  # 四阶矩  
-    delta2 = np.var(x,ddof=1) # 方差  
-    alfa4 = M4/(delta2**2) # 峰度  
-    delta = np.std(x,ddof=1) # 标准差  
-    Fcon = delta/(alfa4**(1/4)) # 对比度  
+    M4 = np.mean( np.power(a, 4) )  # Fourth moment
+    delta2 = np.var(x,ddof=1) # Variance  
+    alfa4 = M4/(delta2**2) # Kurtosis  
+    delta = np.std(x,ddof=1) # Standard deviation  
+    Fcon = delta/(alfa4**(1/4)) # Contrast  
     return Fcon   # It is a number
 
-
+# -----------------------------------------------------------------------------
 # THIRD: Directionality
-# sita为各像素点的角度矩阵，sita will be used in FOURTH:Linelikeness，hence we also return sita  
+# sita is the angular matrxi for each pixel  
 def directionality(graypic):  
-    h,w = graypic.shape   # 获取图片大小  
+    h,w = graypic.shape   
 
     # Sobel Kernels 
     GradientH = np.array([[-1,0,1],[-1,0,1],[-1,0,1]])  
@@ -160,7 +162,7 @@ def directionality(graypic):
     MH=MHconv[3:(h+1),3:(w+1)]  
     MVconv=signal.convolve2d(graypic,GradientV) 
     MV=MVconv[3:(h+1),3:(w+1)] 
-    #向量模  
+    # get the modulus
     MG=(abs(MH)+abs(MV))/2  
     
     # size of valid matrix 
@@ -168,7 +170,7 @@ def directionality(graypic):
     validW = w-2 
     sita = np.zeros(shape=(validH,validW))
     MH[MH == 0] = 1 # since we cannot let MV/MH have zero in MH
-    #各像素点的方向  
+    # The dirction of each pixel  
     for i in range(0,validH):  
         for j in range(0,validW):
             temp=MV[i,j]/MH[i,j]
@@ -177,7 +179,7 @@ def directionality(graypic):
     n=16  
     t=12  
     Nsita = np.zeros(shape=(1,n))  
-    # 构造方向的统计直方图  
+    # Calculte the histogram of directionality  
     for i in range(0,validH):  
         for j in range(0,validW):  
             for k in range(0,n):  
@@ -196,22 +198,22 @@ def directionality(graypic):
 
     return [Fdir,sita] 
 
+FFFFf=contrast(anti_norm_image)
+
 
 #################################################################################
-# LBP feature vectors --> now is 10
+# LBP feature vectors --> returns 10 numbers as bins
 
 ''' settings for LBP '''
 radius = 3
 n_points = 8 * radius
 
-# 仅通过cvtcolor()函数是没有办法将灰色图直接转化为RGB图像的 
 # https://blog.csdn.net/llh_1178/article/details/77833447?utm_source=blogxgwz7
 
 lbp = local_binary_pattern(anti_norm_image, n_points, radius)
 lbpHist, _ = np.histogram(lbp); # _ means ignore another returned value "bin_edges"
 
-plt.imshow(lbp, cmap='gray')
-plt.show()
+plt.imshow(lbp, cmap='gray');plt.title('local binary pattern')
 
 #################################################################################
 # GLCM feature vectors
@@ -235,7 +237,7 @@ def getGlcm(img_gray,d_x,d_y):
 
     max_gray_level=maxGrayLevel(img_gray)
 
-    #若灰度级数大于gray_level，则将图像的灰度级缩小至gray_level，减小灰度共生矩阵的大小
+    # If the grey-level is large than 16，we could shrink the level to 16 for reducing computation time
     if max_gray_level > gray_level:
         for j in range(height):
             for i in range(width):
@@ -273,12 +275,13 @@ glcm_1=getGlcm(img_gray, 0,1)
 glcm_2=getGlcm(img_gray, 1,1)
 glcm_3=getGlcm(img_gray, -1,1)
 
-asm,con,eng,idm=feature_computer(glcm_0)
+asm0,con0,eng0,idm0=feature_computer(glcm_0)
+asm1,con1,eng1,idm1=feature_computer(glcm_0)
+asm2,con2,eng2,idm2=feature_computer(glcm_0)
+asm3,con3,eng3,idm3=feature_computer(glcm_0)
 
 
 # https://blog.csdn.net/kmsj0x00/article/details/79463376 
-
-# Back up  https://blog.csdn.net/qq_23926575/article/details/80599323
 
 #################################################################################
 # Gabor feature vectors
