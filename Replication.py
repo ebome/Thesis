@@ -80,59 +80,74 @@ plt.imshow(anti_norm_image,cmap='gray')
 #################################################################################
 # Tamura feature vectors: coarseness, directionality, contrast
 # -----------------------------------------------------------------------------
-def Tamura(imag):
-    #feature=[0,0,0,0,0]   
-    Fcrs = coarseness(imag,kmax=4)
-    Fcon = contrast(imag)
-    f = directionality(imag) # return [Fdir,sita]
-    feature = [ Fcrs, Fcon, f[0] ]
-    return feature
-
-# -----------------------------------------------------------------------------
 # FIRST: Coarseness
-# returns a float
-def coarseness(graypic,kmax=4): # graphicis the input imahe. 2^kmax is the maximal window  
-    height,width = graypic.shape   # get the size of image 
-    A=np.zeros(shape=(height,width,2**kmax)) # A is the average grey level matrix in 3D
+def averageOverNeighborhoods(x,y,k,img):
+    imgHeight, imgWidth = img.shape
+    result = 0.0
+    border = 2**(2 * k)
     
-    # Calculte the average grey-level within 2^k neighborhood range for each pixel.  
-    for i in range( (2**(kmax-1)+1), (height-2**(kmax-1)+1) ): # stop is not included in py
-        for j in range( (2**(kmax-1)+1), (width-2**(kmax-1)+1) ):
-            for k in range(1,kmax):
-                a = anti_norm_image[ (i-2**(k-1)):(i+2**(k-1)) , (j-2**(k-1)):(j+2**(k-1)) ]
-                A[i,j,k] = np.mean(a) # the mean of all the element in matrix
+    for i in range(0, math.ceil(border)): 
         
-    # Calclute the differnece between the vertical and horizontal window's Ak for each pixel  
-    Eh=np.zeros(shape=(height,width,2**kmax)) 
-    Ev=np.zeros(shape=(height,width,2**kmax)) 
-    for i in range( (2**(kmax-1)), (height-2**(kmax-1)) ): # stop is not included in py
-        for j in range( (2**(kmax-1)), (width-2**(kmax-1)) ):
-            for k in range(0,kmax):
-                # i+2**(k-1) 'and' j+2**(k-1) are not integers, so I need to cast them
-                a_1 = int( i+2**(k-1));a_2 = int( i-2**(k-1));a_3 = int( j+2**(k-1));a_4 = int( j-2**(k-1));
-                a = np.absolute(  A[a_1,j,k] - A[a_2,j]   ) # a is a vertical list
-                b = np.absolute(  A[i,a_3,k] - A[i,a_4]   ) # b is a vertical list
-                Eh[i,j]=a 
-                Ev[i,j]=b  
+        for j in range(0, math.ceil(border)):
+            var12 = x - int( (2**(k - 1)) ) + i
+            var12 = int(var12)
+            var13 = y - int( (2**(k - 1)) ) + j
+            var13 = int(var13)
+            if var12 < 0 :
+               var12 = 0
+            if var13 < 0 :
+               var13 = 0
+            if (var12 >= imgWidth) :
+               var12 = imgWidth - 1
+            if (var13 >= imgHeight):
+               var13 = imgHeight - 1
+            # up to now var12 and var13 are int,
+            # in original code, the image has to be processed from RGB into grayScales, but here we do not need 
+            result = result + anti_norm_image[var12,var13]
 
-    # Maximized k by calculating E  
-    Sbest=np.zeros(shape=(height,width))
-    maxkk=0
-    for i in range( (2**(kmax-1)), (height-2**(kmax-1)) ): # stop is not included in py
-        for j in range( (2**(kmax-1)), (width-2**(kmax-1)) ):
-            maxEh = max(Eh[i,j,:] )  # Eh[i,j,:] is a vector
-            maxEv = max(Ev[i,j,:] )  
-            if maxEh > maxEv:  
-                maxkk = maxEh  
-            else:  
-                maxkk = maxEv  
-            Sbest[i,j]=2**maxkk # The best window size for each pixel is 2^maxkk  
+    result = ( 1.0 / (2**(2 * k)) ) * result
+    return result
 
-    # The coarseness for the whole image is the average of all value in Sbest
-    Fcrs = np.mean(Sbest)  
-    return Fcrs # It is a number
 
-f=coarseness(anti_norm_image)
+
+def differencesBetweenNeighborhoodsHorizontal(x,y,k,img): # x, y, k are int
+    a = averageOverNeighborhoods(x + int( (2**(k - 1))  ), y, k,img)
+    b = averageOverNeighborhoods(x - int( (2**(k - 1))  ), y, k,img)
+    result = abs(a - b)
+    return result
+ 
+def differencesBetweenNeighborhoodsVertical(x,y,k,img):
+    a = averageOverNeighborhoods(x, y + int(  (2**(k - 1))  ), k,img)
+    b = averageOverNeighborhoods(x, y - int(  (2**(k - 1))  ), k,img)
+    result = abs(a - b)
+    return result
+
+def sizeLeadDiffValue(x,y,img): # x and y are int
+    result = 0.0
+    maxK = 1
+    for k in range(0, 3): 
+        horizon = differencesBetweenNeighborhoodsHorizontal(x, y, k,img)
+        vertical = differencesBetweenNeighborhoodsVertical(x, y, k,img)
+        tmp = max(horizon, vertical);
+        if result < tmp:
+            maxK = k
+            result = tmp
+    return maxK;
+
+def coarseness(n0,n1,img): # n0,n1 are integers
+    result = 0.0
+    for i in range(1, n0 - 1): 
+        for j in range(1, n1 - 1):
+            double = sizeLeadDiffValue(i, j,img)
+            result = result + 2**double
+    result = ( 1.0 / (n0 * n1) ) * result
+    return result
+
+
+
+imgHeight, imgWidth = anti_norm_image.shape
+
+f=coarseness(imgWidth,imgHeight,anti_norm_image)
 
 # -----------------------------------------------------------------------------
 # SECOND: Contrast
