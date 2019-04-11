@@ -15,7 +15,7 @@ cv2.imshow("1", img)
 cv2.waitKey()'''
 #################################################################################
 # Read images from folder
-img_dir = r'C:\Users\Yang\Desktop\AMME4111\#Code\#Partitioned'# The Directory of all images 
+img_dir = 'D:\AMME4111\#Code\#Partitioned'# The Directory of all images 
 data_path = os.path.join(img_dir,'*g')
 files = glob.glob(data_path)
 CFdata = []
@@ -24,20 +24,19 @@ for f1 in files:
     CFdata.append(img) 
     # CFdata is a list with size=139 and each element a np-array(3 channel image,uint8)
 
-
+# Print image.shape
 for i in range(len(CFdata)):
     CFdata[i] = cv2.cvtColor(CFdata[i], cv2.COLOR_BGR2GRAY) 
     # in cv2, image is read as BGR rather than RGB
-
 '''
 # Check all flags in cv2
+
 flags=[i for i in dir(cv2) if i.startswith('COLOR_')] 
 print (flags)
 '''
 
 testImage=CFdata[1]
 norm_image = skimage.img_as_float64(testImage)
-plt.imshow(norm_image);plt.title('normed image')
 # Convert an image to double-precision (64-bit) floating point format, with values in [0, 1]
 
 #################################################################################
@@ -79,77 +78,58 @@ plt.imshow(anti_norm_image,cmap='gray')
 # FEATURE EXTRACTION SECTION
 #################################################################################
 # Tamura feature vectors: coarseness, directionality, contrast
-# -----------------------------------------------------------------------------
+def Tamura(imag):
+    #feature=[0,0,0,0,0]   
+    Fcrs = coarseness(imag,kmax=4)
+    Fcon = contrast(imag)
+    f = directionality(imag) # return [Fdir,sita]
+    feature = [ Fcrs, Fcon, f[0] ]
+    return feature
+
 # FIRST: Coarseness
-def averageOverNeighborhoods(x,y,k,img):
-    imgHeight, imgWidth = img.shape
-    result = 0.0
-    border = 2**(2 * k)
+# returns a float
+def coarseness(graypic,kmax=4): # graphicis the input imahe. 2^kmax is the maximal window  
+    height,width = graypic.shape   # get the size of image 
+    A=np.zeros(shape=(height,width,2**kmax)) # A is the average grey level matrix in 3D
     
-    for i in range(0, math.ceil(border)): 
+    # Calculte the average grey-level within 2^k neighborhood range for each pixel.  
+    for i in range( (2**(kmax-1)+1), (height-2**(kmax-1)+1) ): # stop is not included in py
+        for j in range( (2**(kmax-1)+1), (width-2**(kmax-1)+1) ):
+            for k in range(1,kmax):
+                a = anti_norm_image[ (i-2**(k-1)):(i+2**(k-1)) , (j-2**(k-1)):(j+2**(k-1)) ]
+                A[i,j,k] = np.mean(a) # the mean of all the element in matrix
         
-        for j in range(0, math.ceil(border)):
-            var12 = x - int( (2**(k - 1)) ) + i
-            var12 = int(var12)
-            var13 = y - int( (2**(k - 1)) ) + j
-            var13 = int(var13)
-            if var12 < 0 :
-               var12 = 0
-            if var13 < 0 :
-               var13 = 0
-            if (var12 >= imgWidth) :
-               var12 = imgWidth - 1
-            if (var13 >= imgHeight):
-               var13 = imgHeight - 1
-            # up to now var12 and var13 are int,
-            # in original code, the image has to be processed from RGB into grayScales, but here we do not need 
-            result = result + anti_norm_image[var12,var13]
+    # Calclute the differnece between the vertical and horizontal window's Ak for each pixel  
+    Eh=np.zeros(shape=(height,width,2**kmax)) 
+    Ev=np.zeros(shape=(height,width,2**kmax)) 
+    for i in range( (2**(kmax-1)), (height-2**(kmax-1)) ): # stop is not included in py
+        for j in range( (2**(kmax-1)), (width-2**(kmax-1)) ):
+            for k in range(0,kmax):
+                a = np.absolute(  A[(i+2**(k-1)),j,k] - A[(i-2**(k-1)),j]   ) # a is a vertical list
+                b = np.absolute(  A[i,(j+2**(k-1)),k] - A[i,(j-2**(k-1))]   ) # b is a vertical list
+                Eh[i,j]=a 
+                Ev[i,j]=b  
 
-    result = ( 1.0 / (2**(2 * k)) ) * result
-    return result
+    # Maximized k by calculating E  
+    Sbest=np.zeros(shape=(height,width))
+    maxkk=0
+    for i in range( (2**(kmax-1)), (height-2**(kmax-1)) ): # stop is not included in py
+        for j in range( (2**(kmax-1)), (width-2**(kmax-1)) ):
+            maxEh = max(Eh[i,j,:] )  # Eh[i,j,:] is a vector
+            maxEv = max(Ev[i,j,:] )  
+            if maxEh > maxEv:  
+                maxkk = maxEh  
+            else:  
+                maxkk = maxEv  
+            Sbest[i,j]=2**maxkk # The best window size for each pixel is 2^maxkk  
 
+    # The coarseness for the whole image is the average of all value in Sbest
+    Fcrs = np.mean(Sbest)  
+    return Fcrs # It is a number
 
-
-def differencesBetweenNeighborhoodsHorizontal(x,y,k,img): # x, y, k are int
-    a = averageOverNeighborhoods(x + int( (2**(k - 1))  ), y, k,img)
-    b = averageOverNeighborhoods(x - int( (2**(k - 1))  ), y, k,img)
-    result = abs(a - b)
-    return result
- 
-def differencesBetweenNeighborhoodsVertical(x,y,k,img):
-    a = averageOverNeighborhoods(x, y + int(  (2**(k - 1))  ), k,img)
-    b = averageOverNeighborhoods(x, y - int(  (2**(k - 1))  ), k,img)
-    result = abs(a - b)
-    return result
-
-def sizeLeadDiffValue(x,y,img): # x and y are int
-    result = 0.0
-    maxK = 1
-    for k in range(0, 3): 
-        horizon = differencesBetweenNeighborhoodsHorizontal(x, y, k,img)
-        vertical = differencesBetweenNeighborhoodsVertical(x, y, k,img)
-        tmp = max(horizon, vertical);
-        if result < tmp:
-            maxK = k
-            result = tmp
-    return maxK;
-
-def coarseness(n0,n1,img): # n0,n1 are integers
-    result = 0.0
-    for i in range(1, n0 - 1): 
-        for j in range(1, n1 - 1):
-            double = sizeLeadDiffValue(i, j,img)
-            result = result + 2**double
-    result = ( 1.0 / (n0 * n1) ) * result
-    return result
+# f=coarseness(anti_norm_image)
 
 
-
-imgHeight, imgWidth = anti_norm_image.shape
-
-f=coarseness(imgWidth,imgHeight,anti_norm_image)
-
-# -----------------------------------------------------------------------------
 # SECOND: Contrast
 def contrast(graypic):  
     graypic = graypic.astype(float)  # convert data type from uint8 to float
@@ -162,7 +142,7 @@ def contrast(graypic):
     Fcon = delta/(alfa4**(1/4)) # Contrast  
     return Fcon   # It is a number
 
-# -----------------------------------------------------------------------------
+
 # THIRD: Directionality
 # sita is the angular matrxi for each pixel  
 def directionality(graypic):  
@@ -213,9 +193,7 @@ def directionality(graypic):
 
     return [Fdir,sita] 
 
-FFFFf=contrast(anti_norm_image)
-
-
+# f = directionality(anti_norm_image)
 #################################################################################
 # LBP feature vectors --> returns 10 numbers as bins
 
@@ -228,7 +206,8 @@ n_points = 8 * radius
 lbp = local_binary_pattern(anti_norm_image, n_points, radius)
 lbpHist, _ = np.histogram(lbp); # _ means ignore another returned value "bin_edges"
 
-plt.imshow(lbp, cmap='gray');plt.title('local binary pattern')
+plt.imshow(lbp, cmap='gray')
+plt.show()
 
 #################################################################################
 # GLCM feature vectors
@@ -282,7 +261,8 @@ def feature_computer(p):
             Idm+=p[i][j]/(1+(i-j)*(i-j))
             if p[i][j]>0.0:
                 Eng+=p[i][j]*math.log(p[i][j])
-    return Asm,Con,-Eng,Idm
+    return [Asm,Con,-Eng,Idm]
+
 img_gray= anti_norm_image
 
 glcm_0=getGlcm(img_gray, 1,0)
@@ -290,11 +270,11 @@ glcm_1=getGlcm(img_gray, 0,1)
 glcm_2=getGlcm(img_gray, 1,1)
 glcm_3=getGlcm(img_gray, -1,1)
 
-asm0,con0,eng0,idm0=feature_computer(glcm_0)
-asm1,con1,eng1,idm1=feature_computer(glcm_0)
-asm2,con2,eng2,idm2=feature_computer(glcm_0)
-asm3,con3,eng3,idm3=feature_computer(glcm_0)
-
+glcm_feature0=feature_computer(glcm_0)
+glcm_feature1=feature_computer(glcm_1)
+glcm_feature2=feature_computer(glcm_2)
+glcm_feature3=feature_computer(glcm_3)
+print(glcm_feature0,glcm_feature1,glcm_feature2,glcm_feature3)
 
 # https://blog.csdn.net/kmsj0x00/article/details/79463376 
 
