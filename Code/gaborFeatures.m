@@ -1,4 +1,4 @@
-function gaborResult = gaborFeatures(img,gaborArray,d1,d2)
+function gaborResult = gaborFeatures(img,gaborArray)
 
 % GABORFEATURES extracts the Gabor features of the image.
 % It creates a column vector, consisting of the image's Gabor features.
@@ -39,7 +39,7 @@ function gaborResult = gaborFeatures(img,gaborArray,d1,d2)
 %       I WILL APPRECIATE IF YOU CITE OUR PAPER IN YOUR WORK.
 
 
-if (nargin ~= 4)    % Check correct number of arguments
+if (nargin ~= 2)    % Check correct number of arguments
     error('Use correct number of input arguments!')
 end
 
