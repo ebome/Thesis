@@ -1,5 +1,5 @@
 %% histogram equalization
-I=imread('D:\AMME4111\#Code\#Partitioned\#121_clipped.png'); % PNG has 3 channels
+I=imread('D:\AMME4111\#Code\#Partitioned\#3_clipped.png'); % PNG has 3 channels
 K = rgb2gray(I); % Converts RGB channels into greysclae
 
 I_new = mat2gray(K,[0 255]); % Normalize image into [0,1]
@@ -12,7 +12,7 @@ subplot(2,2,3),imhist(I_new,64);title('origial histo');
 subplot(2,2,4),imhist(J,64);title('equalized histo');
 
 %% downsmapling J to 512*512
-DownSampled = imresize(J,[512 512]);
+DownSampled = imresize(J,[512 512]); % DownSampled is normalized image in [0 1]
 
 subplot(1,2,1),imshow(J);title('original image');
 subplot(1,2,2),imshow(DownSampled);title('downsampled image');
@@ -36,8 +36,9 @@ var_3 = nominator./blur_HIGH_denominater;
 var_3(isinf(var_3))=0; 
 
 HIGH_PASS_filter = 0.25*var_3+0.5; % element-wise summation and multiplication
+% ----------------------------------------------------------------------
 % low sigma = 5
-BAND_PASS_filter = imgaussfilt(HIGH_PASS_filter,5,'FilterSize',3);
+BAND_PASS_filter = imgaussfilt(HIGH_PASS_filter,5,'FilterSize',5);
 
 % Up to now, BAND_PASS_filter has value range in [0,1], we can change it to
 % [0,255] using im2uint8 or imadjust. If opposite, use mat2gray
@@ -50,6 +51,7 @@ subplot(122);imshow(Filtered_image);title("Band pass component");
 
 %% texture analysis
 %% 1. Directionality: image gradients along x and y directions
+% tamura= [ Fcrs, Fcon,Fdir,Flin,Frgh]
 tamura = Tamura(Filtered_image);
 
 %% 2. LBP
@@ -78,7 +80,7 @@ LBP_features = reshape(lbpCellHists,1,[]); % now LBP_features are L1 normalized
 % To reduce the vector size, we can use PCA. Reduce it to 1*8 or other
 % vectors
 %% 3. GLCM 
-% Grey-level =256 >  16，we could reduce the level to 16 for reducing computation time
+% Grey-level =256 >  16?we could reduce the level to 16 for reducing computation time
 % NumLevels = Number of gray levels, specified as an integer.
 glcm_4direction = graycomatrix(Filtered_image,'NumLevels',16,'Offset',[0 1; -1 1; -1 0; -1 -1],'Symmetric',true);
 % If your glcm is computed with 'Symmetric' flag you can set the flag 'pairs' to 0
@@ -94,19 +96,55 @@ glcm_4dir_entropy = glcm_features.entro;
 % Concatenate the vectors
 GLCM_descriptor = cat(2, glcm_4dir_energy, glcm_4dir_contrast,glcm_4dir_homogenity,glcm_4dir_entropy);
 %% 4. Gabor Response
-% [mag, phase] = imgaborfilt(A,wavelength,orientation)
-% Wavelength of the sinusoidal carrier, specified as a numeric scalar in the range [2,Inf)
-[mag0, phase0] = imgaborfilt(Filtered_image,2,0);
-[mag1, phase1] = imgaborfilt(Filtered_image,2,45);
-[mag2, phase2] = imgaborfilt(Filtered_image,2,90);
-[mag3, phase3] = imgaborfilt(Filtered_image,2,135);
+% 3 scales, 4 orientations, 39*39 Gaussian Kernels
+u = 3; v = 4;
+gaborArray = gaborFilterBank(u,v,39,39);
 
-% After getting 12 filter image, use equation 20 in paper to get the E
+% figure('NumberTitle','Off','Name','Magnitudes of Gabor filters');
+% for i = 1:u
+%     for j = 1:v        
+%         subplot(u,v,(i-1)*v+j);        
+%         imshow(abs(gaborArray{i,j}),[]);
+%     end
+% end
+% 
+% % Show real parts of Gabor filters:
+% figure('NumberTitle','Off','Name','Real parts of Gabor filters');
+% for i = 1:u
+%     for j = 1:v        
+%         subplot(u,v,(i-1)*v+j);        
+%         imshow(real(gaborArray{i,j}),[]);
+%     end
+% end
 
 
-%% 局部模糊模式(Local Fuzzy Patterns, LFP)
-good paper
-http://www.photon.ac.cn/article/2013/1004-4213-42-11-1375.html
+% In Lee's paper: Gabor is applied on NORMAILZED image, so don't use filter_image
+gaborResult = gaborFeatures(DownSampled,gaborArray);
+
+% figure('NumberTitle','Off','Name','Real parts of Gabor filters');
+% for i = 1:u
+%     for j = 1:v        
+%         subplot(u,v,(i-1)*v+j)    
+%         imshow(real(gaborResult{i,j}),[]);
+%     end
+% end
+% 
+% 
+% % Show magnitudes of Gabor-filtered images
+% figure('NumberTitle','Off','Name','Magnitudes of Gabor filters');
+% for i = 1:u
+%     for j = 1:v        
+%         subplot(u,v,(i-1)*v+j)    
+%         imshow(abs(gaborResult{i,j}),[]);
+%     end
+% end
+
+% ----------------------------------------------------------------------
+% Gabor Feature extraction for each filtered image
+gabor_feature_vector = normalized_gabor(DownSampled,gaborResult,u,v); 
+% gabor_feature_vector is the average absolute deviation from zero-mean
 
 
+%% Local Fuzzy Patterns
 
+% http://www.photon.ac.cn/article/2013/1004-4213-42-11-1375.html
