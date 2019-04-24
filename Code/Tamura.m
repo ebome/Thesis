@@ -1,12 +1,14 @@
 function feature=Tamura(imag)
-             feature=zeros(1,5);   
+             feature=zeros(1,3);   
              Fcrs=coarseness(imag,4);
              Fcon=contrast(imag);
              [Fdir,sita]=directionality(imag);
-             Flin=linelikeness(imag,sita,4);
+             feature(1,:)=[ Fcrs, Fcon,Fdir];
+            % [Fdir,sita]=directionality(imag);
+            % Flin=linelikeness(imag,sita,4);
             %  Freg{k,1}=regularity(I{1,k},32);
-             Frgh=Fcrs+Fcon;
-             feature(1,:)=[ Fcrs, Fcon,Fdir,Flin,Frgh];
+            % Frgh=Fcrs+Fcon;
+            % feature(1,:)=[ Fcrs, Fcon,Fdir,Flin,Frgh];
 end
 
 %% Coarseness
@@ -32,6 +34,7 @@ for i=1+2^(kmax-1):h-2^(kmax-1)
     end  
 end  
 
+%Sbest = zeros( (h-2^(kmax-1))  );
 for i=2^(kmax-1)+1:h-2^(kmax-1)  
     for j=2^(kmax-1)+1:w-2^(kmax-1)  
         [maxEh,p]=max(Eh(i,j,:));  
