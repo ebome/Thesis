@@ -32,3 +32,4 @@ function GLCM_descriptor = get_GLCM(I_new)
         
     % Concatenate the vectors
     GLCM_descriptor = cat(2, glcm_4dir_energy, glcm_4dir_contrast,glcm_4dir_homogenity,glcm_4dir_entropy);
+end
