@@ -1,5 +1,12 @@
+%% Load ground Truth
+data=load('D:\AMME4111\#Code\#Partitioned\score.txt'); 
+data_img_name=data(:,1);
+data_First_observer=data(:,2);
+data_Second_observer=data(:,3);
+
+
 %% histogram equalization
-I=imread('D:\AMME4111\#Code\#Partitioned\#3_clipped.png'); % PNG has 3 channels
+I=imread('D:\AMME4111\#Code\#Partitioned\010.png'); % PNG has 3 channels
 K = rgb2gray(I); % Converts RGB channels into greysclae
 
 I_new = mat2gray(K,[0 255]); % Normalize image into [0,1]
@@ -51,8 +58,24 @@ subplot(122);imshow(Filtered_image);title("Band pass component");
 
 %% texture analysis
 %% 1. Directionality: image gradients along x and y directions
-% tamura= [ Fcrs, Fcon,Fdir,Flin,Frgh]
-tamura = Tamura(Filtered_image);
+% tamura = [ Fcrs, Fcon,Fdir],input image blocks
+C(1:16) = {32};
+c = cell2mat(C);
+tamura_img = mat2cell(Filtered_image,c,c); % This 32*32 block will feed to tamura
+[a,b] =size(tamura_img);
+
+B=[];
+for i = 1:a
+    for j = 1:b
+        each_block = cell2mat( tamura_img(i,j) ); % convert the cell to matrix
+        block_vector = Tamura(each_block);
+        B = [B,block_vector];
+    end
+end
+
+% NaN is due to no contrast or no change in background. Change all the NaN in B into 0
+B(isnan(B))=0;
+tamura_feature_vector = B;
 
 %% 2. LBP
 % Rotation invariance is not very relevant, so set no rotation invariance
@@ -64,42 +87,77 @@ tamura = Tamura(Filtered_image);
 % so set 'Normalization' = 'None'
 % the histogram has 58 separate bins for uniform patterns, 1 bin for all
 % other non-uniform patterns. Hence total 59 bins
-LBP_features=extractLBPFeatures(Filtered_image,'Radius',1,'NumNeighbors',8,'Upright',true,'Normalization','None');
+four_region_img = mat2cell(DownSampled,[256 256],[256 256]); % this 4 regions img will feed to other descriptors
+[a,b]=size(four_region_img);
+B=[];
+for i=1:a
+    for j=1:b
+        each_region = cell2mat( four_region_img(i,j) ); % convert the cell to matrix
+        block_LBP_vector = extractLBPFeatures(each_region,'Radius',1,'NumNeighbors',8,'Upright',true,'Normalization','None');
+        % Reshape the LBP features into a number of neighbors -by- number of cells array to access histograms for each individual cell.
+        numNeighbors = 8;
+        numBins = numNeighbors*(numNeighbors-1)+3;
+        lbpCellHists = reshape(block_LBP_vector,numBins,[]);
 
-% Reshape the LBP features into a number of neighbors -by- number of cells array to access histograms for each individual cell.
-numNeighbors = 8;
-numBins = numNeighbors*(numNeighbors-1)+3;
-lbpCellHists = reshape(LBP_features,numBins,[]);
+        % Normalize each LBP cell histogram using L1 norm.
+        lbpCellHists = bsxfun(@rdivide,lbpCellHists,sum(lbpCellHists));
+        % Reshape the LBP features vector back to 1-by- N feature vector.
+        block_LBP_vector = reshape(lbpCellHists,1,[]); % now LBP_features are L1 normalized
 
-% Normalize each LBP cell histogram using L1 norm.
-lbpCellHists = bsxfun(@rdivide,lbpCellHists,sum(lbpCellHists));
-% Reshape the LBP features vector back to 1-by- N feature vector.
-LBP_features = reshape(lbpCellHists,1,[]); % now LBP_features are L1 normalized
+        % so we have 59(the bin number of features/uniform patterns) *64(number of bins) = 3776
+        % To reduce the vector size, we can use PCA.
+        B = [B,block_LBP_vector];
+    end
+end
 
-% so we have 59(the bin number of features/uniform patterns) *64(number of bins) = 3776
-% To reduce the vector size, we can use PCA. Reduce it to 1*8 or other
-% vectors
+LBP_feature_vector = B;
+
 %% 3. GLCM 
-% Grey-level =256 >  16?we could reduce the level to 16 for reducing computation time
-% NumLevels = Number of gray levels, specified as an integer.
-glcm_4direction = graycomatrix(Filtered_image,'NumLevels',16,'Offset',[0 1; -1 1; -1 0; -1 -1],'Symmetric',true);
-% If your glcm is computed with 'Symmetric' flag you can set the flag 'pairs' to 0
-% the function will normailze GLCM
-glcm_features = GLCM_Features(glcm_4direction,0);
+four_region_img = mat2cell(Filtered_image,[256 256],[256 256]); % this 4 regions img will feed to other descriptors
+[a,b]=size(four_region_img);
+B=[];
+for i=1:a
+    for j=1:b
+        each_region = cell2mat( four_region_img(i,j) ); % convert the cell to matrix
+        
+        % Grey-level =256 >  16 we could reduce the level to 16 for reducing computation time
+        % NumLevels = Number of gray levels, specified as an integer.
+        block_GLCM_4direction_vector = graycomatrix(each_region,'NumLevels',16,'Offset',[0 1; -1 1; -1 0; -1 -1],'Symmetric',true);
+        
+        % If your glcm is computed with 'Symmetric' flag you can set the flag 'pairs' to 0
+        % the function will normailze GLCM
+        glcm_features = GLCM_Features(block_GLCM_4direction_vector,0);
+        
+        % Four second-order statistical features for 4 directions
+        glcm_4dir_energy = glcm_features.energ;
+        glcm_4dir_contrast = glcm_features.contr;
+        glcm_4dir_homogenity = glcm_features.homom;
+        glcm_4dir_entropy = glcm_features.entro;
+        
+        % Concatenate the vectors
+        GLCM_descriptor = cat(2, glcm_4dir_energy, glcm_4dir_contrast,glcm_4dir_homogenity,glcm_4dir_entropy);
+        B = [B,GLCM_descriptor];
+    end
+end
+GLCM_feature_vector = B;
 
-% Four second-order statistical features for 4 directions
-glcm_4dir_energy = glcm_features.energ;
-glcm_4dir_contrast = glcm_features.contr;
-glcm_4dir_homogenity = glcm_features.homom;
-glcm_4dir_entropy = glcm_features.entro;
-
-% Concatenate the vectors
-GLCM_descriptor = cat(2, glcm_4dir_energy, glcm_4dir_contrast,glcm_4dir_homogenity,glcm_4dir_entropy);
+% glcm_4direction = graycomatrix(Filtered_image,'NumLevels',16,'Offset',[0 1; -1 1; -1 0; -1 -1],'Symmetric',true);
+% % If your glcm is computed with 'Symmetric' flag you can set the flag 'pairs' to 0
+% % the function will normailze GLCM
+% glcm_features = GLCM_Features(glcm_4direction,0);
+% 
+% % Four second-order statistical features for 4 directions
+% glcm_4dir_energy = glcm_features.energ;
+% glcm_4dir_contrast = glcm_features.contr;
+% glcm_4dir_homogenity = glcm_features.homom;
+% glcm_4dir_entropy = glcm_features.entro;
+% 
+% % Concatenate the vectors
+% GLCM_descriptor = cat(2, glcm_4dir_energy, glcm_4dir_contrast,glcm_4dir_homogenity,glcm_4dir_entropy);
 %% 4. Gabor Response
 % 3 scales, 4 orientations, 39*39 Gaussian Kernels
 u = 3; v = 4;
 gaborArray = gaborFilterBank(u,v,39,39);
-
 % figure('NumberTitle','Off','Name','Magnitudes of Gabor filters');
 % for i = 1:u
 %     for j = 1:v        
@@ -117,9 +175,31 @@ gaborArray = gaborFilterBank(u,v,39,39);
 %     end
 % end
 
+four_region_img = mat2cell(DownSampled,[256 256],[256 256]); % this 4 regions img will feed to other descriptors
+[a,b]=size(four_region_img);
+B=[];
+for i=1:a
+    for j=1:b
+        each_region = cell2mat( four_region_img(i,j) ); % convert the cell to matrix
+        
+        % GaborResult are 12 filtered images
+        gaborResult = gaborFeatures(each_region,gaborArray);
+        
+        % Gabor Feature extraction for each filtered image
+        feature_vector = normalized_gabor(DownSampled,gaborResult,u,v); 
+        % gabor_feature_vector is the average absolute deviation from zero-mean
+
+        B = [B,feature_vector];
+    end
+end
+Gabor_feature_vector = B;
+
+
+
+
 
 % In Lee's paper: Gabor is applied on NORMAILZED image, so don't use filter_image
-gaborResult = gaborFeatures(DownSampled,gaborArray);
+%gaborResult = gaborFeatures(DownSampled,gaborArray);
 
 % figure('NumberTitle','Off','Name','Real parts of Gabor filters');
 % for i = 1:u
@@ -138,11 +218,6 @@ gaborResult = gaborFeatures(DownSampled,gaborArray);
 %         imshow(abs(gaborResult{i,j}),[]);
 %     end
 % end
-
-% ----------------------------------------------------------------------
-% Gabor Feature extraction for each filtered image
-gabor_feature_vector = normalized_gabor(DownSampled,gaborResult,u,v); 
-% gabor_feature_vector is the average absolute deviation from zero-mean
 
 
 %% Local Fuzzy Patterns
