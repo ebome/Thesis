@@ -1,6 +1,6 @@
 function GLCM_descriptor = get_GLCM(I_new)
-    J = adapthisteq(I_new,'ClipLimit',0.25);
-    DownSampled = imresize(J,[512 512]); % DownSampled is normalized image in [0 1]
+    % J = adapthisteq(I_new,'ClipLimit',0.25);
+    DownSampled = imresize(I_new,[512 512]); % DownSampled is normalized image in [0 1]
 
     blur_HIGH = imgaussfilt(DownSampled,10,'FilterSize',11); %  Gaussian blur:img_undist=G_h(L)
 
