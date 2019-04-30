@@ -8,19 +8,28 @@ Files = dir(strcat(imgPath,'*.png'));
 img_name = struct2cell(Files);
 img_name = img_name(1,:);
 LengthFiles = length(Files);
-store = zeros([512,512,LengthFiles]);
 
+store = zeros([512,512,LengthFiles]);
 for i = 1:LengthFiles               
     img = imread( imgPath+string(img_name(i))); 
     K = rgb2gray(img); % Converts RGB channels into greysclae
     I_new = mat2gray(K,[0 255]); %  Normalize image into [0,1]
-    
     store(:,:,i) = I_new;
 end
 
+% After CLAHE, remove the extract noise from them
+histo_equalized = zeros([512,512,LengthFiles]);
+for i = 1:LengthFiles               
+    G = adapthisteq(store(:,:,i) ,'ClipLimit',0.25); 
+    G_orign = store(:,:,i);
+    G(G_orign == 0) = 0;     
+    histo_equalized(:,:,i) = G;
+end
+
+
+%% Gaussian filtered data
 gaussian_filtered_images = zeros([512,512,LengthFiles]);
 for i = 1:LengthFiles 
-    %J = adapthisteq(store(:,:,i),'ClipLimit',0.2);
     DownSampled = imresize(store(:,:,i),[512 512]); % DownSampled is normalized image in [0 1]
     blur_HIGH = imgaussfilt(DownSampled,10,'FilterSize',11); %  Gaussian blur:img_undist=G_h(L)
     nominator = DownSampled - blur_HIGH; %  L-G_h(L)
@@ -34,22 +43,16 @@ for i = 1:LengthFiles
     gaussian_filtered_images(:,:,i) = Filtered_image;
 end
 
-i = 14;
-aa_1 = store(:,:,i);
-aa_2 = gaussian_filtered_images(:,:,i);
-figure
-imshowpair(aa_1, aa_2, 'montage')
-title('raw img(left),filtered (right)')
-
-%% annother way to store images
-imdsTrain = imageDatastore(fullfile(imgPath),... 
-    'FileExtensions','.png',... 
-    'LabelSource','foldernames');
-imdsTrain.Labels = categorical_label_First; % the imageDatastore object cannot store the images
+% i = 14;
+% aa_1 = store(:,:,i);
+% aa_2 = gaussian_filtered_images(:,:,i);
+% figure
+% imshowpair(aa_1, aa_2, 'montage')
+% title('raw img(left),filtered (right)')
 
 
-%% remove the shadows around filtered images
 
+% remove the shadows around filtered images
 removed_noise_images = zeros([512,512,LengthFiles]);
 for i = 1:LengthFiles 
     G_orign = store(:,:,i);
@@ -60,35 +63,29 @@ for i = 1:LengthFiles
 end
 
 
-i = 1;
-aa_1 = store(:,:,i);
-aa_2 = gaussian_filtered_images(:,:,i);
-aa_3 = removed_noise_images(:,:,i);
-figure
-imshowpair(aa_1, aa_3, 'montage')
-% title('Gaussian filted 4(left),noise removed (right)')
-title('Manual segmented image(left),Gaussian filted image(right)')
+% i = 1;
+% aa_1 = store(:,:,i);
+% aa_2 = gaussian_filtered_images(:,:,i);
+% aa_3 = removed_noise_images(:,:,i);
+% figure
+% imshowpair(aa_1, aa_3, 'montage')
+% title('Manual segmented image(left),Gaussian filted image(right)')
+% 
+% 
+% [Gmag, Gdir] = imgradient(aa_3,'prewitt');
+% [Gmag2, Gdir2] = imgradient(aa_32,'prewitt');
+% figure
+% imshowpair(Gmag, Gdir, 'montage');
+% title('Gradient Magnitude, Gmag (left), and Gradient Direction, Gdir (right), using Prewitt method 4')
+% figure
+% imshowpair(Gmag2, Gdir2, 'montage');
+% title('Gradient Magnitude, Gmag (left), and Gradient Direction, Gdir (right), using Prewitt method 14 MILD')
 
-
-i = 14;
-aa_22 = gaussian_filtered_images(:,:,i);
-aa_32 = removed_noise_images(:,:,i);
-figure
-imshowpair(aa_22, aa_32, 'montage')
-title('Gaussian filted 14(left),noise removed (right)')
-
-
-
-[Gmag, Gdir] = imgradient(aa_3,'prewitt');
-[Gmag2, Gdir2] = imgradient(aa_32,'prewitt');
-
-
-figure
-imshowpair(Gmag, Gdir, 'montage');
-title('Gradient Magnitude, Gmag (left), and Gradient Direction, Gdir (right), using Prewitt method 4')
-figure
-imshowpair(Gmag2, Gdir2, 'montage');
-title('Gradient Magnitude, Gmag (left), and Gradient Direction, Gdir (right), using Prewitt method 14 MILD')
+%% annother way to store images
+imdsTrain = imageDatastore(fullfile(imgPath),... 
+    'FileExtensions','.png',... 
+    'LabelSource','foldernames');
+imdsTrain.Labels = categorical_label_First; % the imageDatastore object cannot store the images
 
 
 %% Extract individual vectors
@@ -125,7 +122,7 @@ tamVector = cat(2,Direction_descriptor_long,Tamura_descriptor);
 tic
 Lbp_descriptor_long = [];
 for i = 1:LengthFiles  
-    J = adapthisteq(store(:,:,i),'ClipLimit',0.25);
+    J = histo_equalized(:,:,i);
     LbpVec = extractLBPFeatures(J,'Radius',1,'NumNeighbors',8,'Upright',false,'CellSize',[16 16]);
     
     %LbpVec = get_LBP();
@@ -136,12 +133,30 @@ toc
 [coeff,score,latent] = pca(Lbp_descriptor_long);
 Lbp_descriptor = score;
 
+
+% HOG
+tic
+hog_descriptor_long = [];
+for i = 1:LengthFiles  
+    J = histo_equalized(:,:,i); % histo_equalized  removed_noise_images
+    HogVec = extractHOGFeatures(J, 'UseSignedOrientation',true,'CellSize',[8 8],'BlockSize',[4 4]);
+    
+    hog_descriptor_long = [hog_descriptor_long;HogVec];
+end 
+toc 
+% pca(X):n samples have m dimensions; score has n samples and p dimensions
+[coeff,score,latent] = pca(hog_descriptor_long);
+hog_descriptor = score;
+% [HogVec,visualization] = extractHOGFeatures(removed_noise_images(:,:,3), 'UseSignedOrientation',true,'CellSize',[8 8],'BlockSize',[4 4]);
+% plot(visualization)
+
+
 % GLCM features in four directions were computed globally
 % NEED datas_normal = mapminmax(datas)
 tic
 GLCM_descriptor = [];
 for i = 1:LengthFiles               
-    GlcmVec = get_GLCM(store(:,:,i));
+    GlcmVec = get_GLCM(histo_equalized(:,:,i));
     GLCM_descriptor = [GLCM_descriptor;GlcmVec];
 end
 toc % in seconds
@@ -151,24 +166,45 @@ toc % in seconds
 tic
 Gabor_descriptor = [];
 for i = 1:LengthFiles               
-    GaborVec = get_Gabor(store(:,:,i));
+    GaborVec = get_Gabor(histo_equalized(:,:,i));
     Gabor_descriptor = [Gabor_descriptor;GaborVec];
 end
 toc % in seconds
+
+%%
+tic
+sift_descriptor_long = [];
+for i = 1:LengthFiles  
+    J = histo_equalized(:,:,i); % histo_equalized  removed_noise_images
+    SiftVec = extractHOGFeatures(J, 'UseSignedOrientation',true,'CellSize',[8 8],'BlockSize',[4 4]);
+    sift_descriptor_long = [sift_descriptor_long;SiftVec];
+end 
+toc 
+% pca(X):n samples have m dimensions; score has n samples and p dimensions
+[coeff,score,latent] = pca(sift_descriptor_long);
+hog_descriptor = score;
+
+G = histo_equalized(:,:,3);
+
+
+
+
 
 
 %% 1v1 SVM for LBP/Gabor/GLCM
 clc
 true_labels = categorical_label_First;
-datas = Gabor_descriptor; % Lbp_descriptor    GLCM_descriptor     Gabor_descriptor
+datas = hog_descriptor; % Lbp_descriptor    GLCM_descriptor   Gabor_descriptor  hog_descriptor
 datas_normal = rescale(datas); % mapping row minimum and maximum values to [-1 1]
 % Specify t as a binary learner, or one in a set of binary learners
 % t is an SVM template. Most of the template object properties are empty. 
 % When training the ECOC classifier, the software sets the applicable properties to their default values.
 % Linear kernel, default for two-class learning
-t = templateSVM('KernelFunction','gaussian'); % Gabor should remove 'KernelFunction','gaussian', the rest deacriptors should keep
+t = templateSVM(); % Gabor/hog should remove 'KernelFunction','gaussian', the rest deacriptors should keep
 % Mdl is a ClassificationECOC classifier. You can access its properties using dot notation.
-Mdl = fitcecoc(datas_normal,true_labels,'Learners',t); % Gabor can use normalized data for better performance
+Mdl = fitcecoc(datas,true_labels,'Learners',t); % Gabor can use normalized data for better performance
+% https://www.cnblogs.com/pinard/p/6126077.html
+
 
 % Cross-validate Mdl using 10-fold cross-validation.
 % Cross-validation partition, specified as the comma-separated pair consisting of 
