@@ -199,28 +199,90 @@ toc
 haar_descriptor = score3;
 
 %% Dense SIFT implemented by VLFeat.org
+% https://stackoverflow.com/questions/19048891/training-of-svm-classifier-using-sift-features
+% quickly compute descriptors for densely sampled keypoints with identical size and orientation. 
 tic
 sift_descriptor_long = [];
+% keypoints = frame f; descriptors d are 
 for i = 1:LengthFiles  
-    J = sift_equalized(:,:,i); % histo_equalized  removed_noise_images
-    SiftVec = 0;
+    J =  single(sift_equalized(:,:,i)); % histo_equalized  removed_noise_images
+   
+    % Each column of frame f is a feature frame and has the format [X;Y;S;TH], where X,Y
+    % are (fractional) center of the frame, S is the scale and TH is the orientation (in radians).
+    %   Each column of D is the descriptor of the corresponding frame in F. A descriptor 
+    %   is a 128-dimensional vector of class UINT8.
+    [f, d] = vl_sift(J,'EdgeThresh',7,'Octaves',2,'Levels',2) ;    
     
-    
-    
-    sift_descriptor_long = [sift_descriptor_long;SiftVec];
+    sift_descriptor_long = [sift_descriptor_long;d];
 end 
 toc 
 % pca(X):n samples have m dimensions; score has n samples and p dimensions
 [coeff,score,latent] = pca(sift_descriptor_long);
-hog_descriptor = score;
+sift_descriptor = score;
 
-G = histo_equalized(:,:,3);
+
+
+J1 = single(sift_equalized(:,:,126)); % must be single
+J2 = single(sift_equalized(:,:,11)); % must be single
+
+[f d] = vl_sift(J1,'EdgeThresh',7,'Octaves',2,'Levels',2); 
+
+%  Visulization
+imshow(histo_equalized(:,:,126));hold on;
+perm = randperm(size(f,2)) ;
+sel = perm(1:30) ;
+h1 = vl_plotframe(f(:,sel)) ;
+h2 = vl_plotframe(f(:,sel)) ;
+set(h1,'color','k','linewidth',3) ;
+set(h2,'color','y','linewidth',2) ;
+hold on;
+h3 = vl_plotsiftdescriptor(d(:,sel),f(:,sel));
+set(h3,'color','g');
+
+
+
+
+%% SURF
+tic
+surf_descriptor_long = [];
+for i = 1:LengthFiles  
+    I =  single(sift_equalized(:,:,i)); % histo_equalized  removed_noise_images
+
+    % Return a SURFPoints class. Ref: https://blog.csdn.net/David_Han008/article/details/53176145
+    points = detectSURFFeatures(I,'NumOctaves',2,'NumScaleLevels',4); 
+    
+    % Use calss method to get the strongest 100 SURF points. https://ww2.mathworks.cn/help/vision/ref/surfpoints.html
+    new_points = selectStrongest(points,100);
+    % newPoints = points( points.Scale<2 );
+       
+    [SURFfeatures,validPoints] = extractFeatures(I,new_points,'Method','SURF');
+    surfVec = SURFfeatures(:)';
+       
+    surf_descriptor_long = [surf_descriptor_long;surfVec];
+end 
+toc 
+% pca(X):n samples have m dimensions; score has n samples and p dimensions
+[coeff,score,latent] = pca(surf_descriptor_long);
+surf_descriptor = score;
+
+% % Visulization of SURF descriptor
+% a1 = histo_equalized(:,:,2);
+% points = detectSURFFeatures(a1,'NumOctaves',2,'NumScaleLevels',4); 
+% figure(1),imshow(a1);hold on;% hold on must be added otherwise cannot see original image
+% title('SURF Features of image 2');plot(points.selectStrongest(50));
+% 
+% a2 = histo_equalized(:,:,36);
+% points2 = detectSURFFeatures(a2,'NumOctaves',2,'NumScaleLevels',4); 
+% new_points2 = selectStrongest(points2,50);
+% [SURFfeatures2,validPoints2] = extractFeatures(a2,new_points2,'Method','SURF');
+% figure(2),imshow(a2);hold on;
+% title('SURF Features of image 36');plot(points2.selectStrongest(50));
 
 
 %% 1v1 SVM for LBP/Gabor/GLCM/Harr-like/HOG
 clc
 true_labels = categorical_label_First;
-datas = haar_descriptor; % Lbp_descriptor    GLCM_descriptor   Gabor_descriptor  hog_descriptor haar_descriptor
+datas =  surf_descriptor ; % Lbp_descriptor    GLCM_descriptor   Gabor_descriptor  hog_descriptor   haar_descriptor
 datas_normal = rescale(datas); % mapping row minimum and maximum values to [-1 1]
 % Specify t as a binary learner, or one in a set of binary learners
 % t is an SVM template. Most of the template object properties are empty. 
@@ -235,7 +297,7 @@ Mdl = fitcecoc(datas_normal,true_labels,'Learners',t); % Gabor can use normalize
 % Cross-validate Mdl using 10-fold cross-validation.
 % Cross-validation partition, specified as the comma-separated pair consisting of 
 % 'CVPartition' and a cvpartition partition object created by cvpartition. 
-k = 10;
+k = 5;
 cvp = cvpartition(true_labels,'KFold',k,'Stratify',true);
 CVMdl = crossval(Mdl,'cvpartition',cvp);
 
@@ -292,3 +354,4 @@ cvp_combined = cvpartition(true_labels,'KFold',k,'Stratify',true);
 CVMd_combined = crossval(Md_combined,'cvpartition',cvp_combined);
 
 loss_combined = kfoldLoss(CVMd_combined)
+
