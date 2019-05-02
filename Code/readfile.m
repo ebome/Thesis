@@ -160,8 +160,8 @@ toc
 % pca(X):n samples have m dimensions; score has n samples and p dimensions
 [coeff2,score2,latent2] = pca(hog_descriptor_long);
 hog_descriptor = score2;
-% [HogVec,visualization] = extractHOGFeatures(removed_noise_images(:,:,3), 'UseSignedOrientation',true,'CellSize',[8 8],'BlockSize',[4 4]);
-% plot(visualization)
+% [HogVec,visualization] = extractHOGFeatures(histo_equalized(:,:,3), 'UseSignedOrientation',true,'CellSize',[8 8],'BlockSize',[4 4]);
+% imshow(histo_equalized(:,:,3));hold on; plot(visualization);
 
 
 % GLCM features in four directions were computed globally
@@ -198,46 +198,46 @@ toc
 [coeff3,score3,latent3] = pca(haar_descriptor_long);
 haar_descriptor = score3;
 
-%% Dense SIFT implemented by VLFeat.org
+%% SIFT implemented by VLFeat.org
 % https://stackoverflow.com/questions/19048891/training-of-svm-classifier-using-sift-features
 % quickly compute descriptors for densely sampled keypoints with identical size and orientation. 
 tic
 sift_descriptor_long = [];
+permutation = randperm(100) ;
+sel = permutation(1:100); % select 30 number from permutation
 % keypoints = frame f; descriptors d are 
 for i = 1:LengthFiles  
-    J =  single(sift_equalized(:,:,i)); % histo_equalized  removed_noise_images
-   
+    J =  single(sift_equalized(:,:,i)); % histo_equalized  removed_noise_images   
     % Each column of frame f is a feature frame and has the format [X;Y;S;TH], where X,Y
     % are (fractional) center of the frame, S is the scale and TH is the orientation (in radians).
     %   Each column of D is the descriptor of the corresponding frame in F. A descriptor 
     %   is a 128-dimensional vector of class UINT8.
     [f, d] = vl_sift(J,'EdgeThresh',7,'Octaves',2,'Levels',2) ;    
-    
-    sift_descriptor_long = [sift_descriptor_long;d];
+    % From descriptor d get the selected descriptors
+    d_rand_selection = d(:,sel);
+    d_horizontal_vec = d_rand_selection(:)';
+    sift_descriptor_long = [sift_descriptor_long;d_horizontal_vec]; % unit8
 end 
 toc 
+sift_descriptor_long = double(sift_descriptor_long);
 % pca(X):n samples have m dimensions; score has n samples and p dimensions
 [coeff,score,latent] = pca(sift_descriptor_long);
 sift_descriptor = score;
 
 
-
-J1 = single(sift_equalized(:,:,126)); % must be single
-J2 = single(sift_equalized(:,:,11)); % must be single
-
-[f d] = vl_sift(J1,'EdgeThresh',7,'Octaves',2,'Levels',2); 
-
 %  Visulization
-imshow(histo_equalized(:,:,126));hold on;
-perm = randperm(size(f,2)) ;
-sel = perm(1:30) ;
-h1 = vl_plotframe(f(:,sel)) ;
-h2 = vl_plotframe(f(:,sel)) ;
-set(h1,'color','k','linewidth',3) ;
-set(h2,'color','y','linewidth',2) ;
-hold on;
-h3 = vl_plotsiftdescriptor(d(:,sel),f(:,sel));
-set(h3,'color','g');
+% J1 = single(sift_equalized(:,:,104)); % must be single
+% [f d] = vl_sift(J1,'EdgeThresh',7,'Octaves',2,'Levels',2); 
+% imshow(histo_equalized(:,:,126));hold on;
+% permutation = randperm(200) ;
+% sel = permutation(1:30) ;
+% h1 = vl_plotframe(f(:,sel)) ;
+% h2 = vl_plotframe(f(:,sel)) ;
+% set(h1,'color','k','linewidth',3) ;
+% set(h2,'color','y','linewidth',2) ;
+% hold on;
+% h3 = vl_plotsiftdescriptor(d(:,sel),f(:,sel));
+% set(h3,'color','g');
 
 
 
@@ -268,15 +268,16 @@ surf_descriptor = score;
 % % Visulization of SURF descriptor
 % a1 = histo_equalized(:,:,2);
 % points = detectSURFFeatures(a1,'NumOctaves',2,'NumScaleLevels',4); 
-% figure(1),imshow(a1);hold on;% hold on must be added otherwise cannot see original image
-% title('SURF Features of image 2');plot(points.selectStrongest(50));
+% 
 % 
 % a2 = histo_equalized(:,:,36);
 % points2 = detectSURFFeatures(a2,'NumOctaves',2,'NumScaleLevels',4); 
 % new_points2 = selectStrongest(points2,50);
 % [SURFfeatures2,validPoints2] = extractFeatures(a2,new_points2,'Method','SURF');
-% figure(2),imshow(a2);hold on;
-% title('SURF Features of image 36');plot(points2.selectStrongest(50));
+% 
+% subplot(1,2,1),imshow(a1);hold on;plot(points.selectStrongest(30));
+% subplot(1,2,2),imshow(a1),imshow(a2);hold on;plot(points2.selectStrongest(30));
+% title('SURF Features of image 2(left),SURF Features of image 36(right)');
 
 
 %% 1v1 SVM for LBP/Gabor/GLCM/Harr-like/HOG
@@ -288,16 +289,15 @@ datas_normal = rescale(datas); % mapping row minimum and maximum values to [-1 1
 % t is an SVM template. Most of the template object properties are empty. 
 % When training the ECOC classifier, the software sets the applicable properties to their default values.
 % Linear kernel, default for two-class learning
-t = templateSVM('KernelFunction','gaussian'); % Gabor/hog should remove 'KernelFunction','gaussian', the rest deacriptors should keep
+t = templateSVM(); % Gabor/hog should remove 'KernelFunction','gaussian', the rest deacriptors should keep
 % Mdl is a ClassificationECOC classifier. You can access its properties using dot notation.
 Mdl = fitcecoc(datas_normal,true_labels,'Learners',t); % Gabor can use normalized data for better performance
 % https://www.cnblogs.com/pinard/p/6126077.html
 
-
 % Cross-validate Mdl using 10-fold cross-validation.
 % Cross-validation partition, specified as the comma-separated pair consisting of 
 % 'CVPartition' and a cvpartition partition object created by cvpartition. 
-k = 5;
+k = 10;
 cvp = cvpartition(true_labels,'KFold',k,'Stratify',true);
 CVMdl = crossval(Mdl,'cvpartition',cvp);
 
@@ -336,17 +336,30 @@ ConfMat2 = confusionchart(true_labels,predict_label2,'RowSummary','total-normali
 clc
 true_labels = categorical_label_First;
 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 Lbp_normal = rescale(Lbp_descriptor);
 Gabor_normal = rescale(Gabor_descriptor);
 Tam_normal = rescale(tamVector); % mapping row minimum and maximum values to [-1 1]
 
-combined_features = horzcat(Tam_normal,Gabor_normal,Lbp_normal,GLCM_descriptor);
+combined_features_thesis = horzcat(Tam_normal,Gabor_normal,Lbp_normal,GLCM_descriptor);
 % datas = horzcat(Lbp_normal,tamVector);
 % datas = horzcat(tamVector,Gabor_descriptor);
 % datas = horzcat(Lbp_normal,GLCM_descriptor);
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+haar_normal = rescale(haar_descriptor);
+surf_normal = rescale(surf_descriptor);
+sift_normal = rescale(sift_descriptor);
+hog_normal = rescale(hog_descriptor);
+
+combined_features_new = horzcat(sift_normal,surf_normal,haar_normal,hog_normal);
+%%
+% datas = combined_features_new;
+% datas = horzcat(hog_normal,sift_normal);
+% datas = horzcat(hog_normal,haar_normal);
+datas = horzcat(hog_normal,sift_normal,surf_normal);
 
   
-t_combined = templateSVM(); % Gabor should remove 'KernelFuncti on','gaussian'
+t_combined = templateSVM(); % Gabor should remove 'KernelFunction','gaussian'
 Md_combined = fitcecoc(datas,true_labels,'Learners',t_combined); % GLCM can try normalized data
 
 k = 10;
