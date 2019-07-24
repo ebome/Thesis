@@ -4,15 +4,15 @@ HWAM in USYD calculator
 
 # ye2=input('enter 2nd yr subject scores, not incld X111:')
 # year2 = eval(ye2)
-year2 =  [55,76,80,72,71,83,60,73]
+
 
 # ye3=input('enter 3rd yr subject scores, not incld X111:') # input as a string, but cast into list
 # year3 = eval(ye3)
-year3 =   [73,80,86,75,76,85,84]
+
 
 # ye4=input('enter 4th yr subject scores, not incld X111:')
 # year4 = eval(ye4)
-year4  =  [87,82,83]
+
 
 thesis=input('enter thesis scores:')
 thesis_score = int(thesis)
